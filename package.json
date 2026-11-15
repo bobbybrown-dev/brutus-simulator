@@ -5,16 +5,16 @@
   "type": "module",
   "description": "Tick-deterministic Brutus (OSRS NPC 15626) simulator: headless engine with RSProx log-replay verification, plus a Three.js client.",
   "scripts": {
-    "dev": "vite",
-    "build": "node -e \"const fs=require('fs'); if(!fs.existsSync('public/osrs-assets/manifest.json')) { const {execSync}=require('child_process'); try { execSync('npm run assets', {stdio:'inherit'}); } catch { console.log('Extracting prebuilt asset zip...'); execSync('node -e \\\"const fs=require(\\'fs\\'), {unzip}=require(\\'fflate\\');/* or your unzip command */\\\"'); } }\" && tsc --noEmit && tsx src/assetBundle/check.ts && vite build",
-    "preview": "vite preview",
-    "test": "node --import tsx --test test/*.test.ts",
-    "typecheck": "tsc --noEmit",
-    "check-collision": "tsx scripts/check-collision.ts",
-    "build:placeholders": "tsc --noEmit && vite build",
-    "assets": "tsx scripts/assets/build.ts",
-    "assets:check": "tsx src/assetBundle/check.ts"
-  },
+  "dev": "vite",
+  "build": "node -e \"const fs=require('fs'); if(!fs.existsSync('public/osrs-assets/manifest.json')) { require('child_process').execSync('unzip osrs-assets-prebuilt.zip -d public', {stdio:'inherit'}); }\" && tsc --noEmit && tsx src/assetBundle/check.ts && vite build",
+  "preview": "vite preview",
+  "test": "node --import tsx --test test/*.test.ts",
+  "typecheck": "tsc --noEmit",
+  "check-collision": "tsx scripts/check-collision.ts",
+  "build:placeholders": "tsc --noEmit && vite build",
+  "assets": "tsx scripts/assets/build.ts",
+  "assets:check": "tsx src/assetBundle/check.ts"
+},
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/three": "^0.187.0",
