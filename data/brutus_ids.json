@@ -1,0 +1,129 @@
+{
+  "_meta": {
+    "boss": "Brutus",
+    "source_transcript": "20261114T211629-d3caaa4.txt",
+    "revision": "242.1",
+    "kills_analysed": 5,
+    "note": "All IDs taken verbatim from RSProx packets. Entries under 'unverified' were not seen in packets and must be confirmed in the cache."
+  },
+  "npcs": {
+    "15626": { "name": "cowboss", "role": "fight NPC (Brutus)", "size": 3, "hitpoints": 58, "transforms": false },
+    "15624": { "name": "cowboss_mapped", "role": "cosmetic pen NPC outside the instance; multinpc parent", "multinpc_children": [15625, 15626] },
+    "15625": { "name": "cowboss_unnamed", "role": "multinpc child shown before quest kill ('Bull')" },
+    "15632": { "name": "cowboss_farmer", "role": "quest NPC, not in arena" }
+  },
+  "sequences": {
+    "13790": { "name": "cow_boss_spawn", "action": "spawn", "delay_cycles": 0 },
+    "13783": { "name": "cow_boss_attack", "action": "melee auto-attack", "delay_cycles": 0 },
+    "13785": { "name": "cow_boss_stomp", "action": "stomp wind-up", "delay_cycles": 30 },
+    "13778": { "name": "cow_boss_charge", "action": "charge wind-up", "delay_cycles": 60 },
+    "13784": { "name": "cow_boss_death", "action": "death", "delay_cycles": 0 }
+  },
+  "spotanims": {
+    "3588": { "name": "vfx_cowboss_stomp_impact01", "attach": "map tile (map_anim)", "height": 0, "delay": 0, "when": "stomp impact, one per stomp tile" },
+    "3589": { "name": "vfx_cowboss_stomp_impact02", "attach": "boss NPC (spotanim slot 0)", "height": 0, "delay": 0, "when": "stomp impact" },
+    "85": { "name": "failedspell_impact", "attach": "map tile (map_anim)", "height": 16, "when": "loot tile on despawn; generic" }
+  },
+  "projectiles": {
+    "_boss": "none - all boss attacks are melee/area",
+    "15": {
+      "name": "rune_arrow_travel",
+      "owner": "player",
+      "start_cycle": 41,
+      "end_cycle_formula": "41 + 5 + 5 * distance",
+      "end_cycle_observed": { "1": 51, "2": 56, "5": 71 },
+      "start_height": 163,
+      "end_height": 146,
+      "slope": 15,
+      "progress": 11
+    }
+  },
+  "objects": {
+    "60763": { "name": "fencegate_l_cowboss_start", "coord": [3262, 3294, 0], "shape": 0, "rotation": 1, "role": "pen gate clicked to start fight (real world)" },
+    "60761": { "name": "fencegate_l_cowboss_start_noop", "coord": [3262, 3294, 0], "shape": 0, "rotation": 1, "role": "pen gate inside instance" },
+    "60762": { "name": "fencegate_r_cowboss_start_noop", "coord": [3263, 3294, 0], "shape": 0, "rotation": 1, "role": "pen gate inside instance" },
+    "60764": { "name": "fencegate_r_cowboss_exit", "coord": [3253, 3267, 0], "shape": 0, "rotation": 0, "role": "instance exit gate" },
+    "60765": { "name": "fencegate_l_cowboss_exit", "coord": [3253, 3266, 0], "shape": 0, "rotation": 0, "role": "instance exit gate" },
+    "1558": { "name": "fencegate_l", "role": "real-world field gate (closed), replaced by 60765 in instance" },
+    "1560": { "name": "fencegate_r", "role": "real-world field gate (closed), replaced by 60764 in instance" },
+    "1559": { "name": "openfencegate_l", "role": "real-world field gate (open)" },
+    "1567": { "name": "openfencegate_r", "role": "real-world field gate (open)" }
+  },
+  "sounds": {
+    "synth": {
+      "11212": { "name": "cb_boss_moo_angry_01", "when": "spawn" },
+      "11213": { "name": "cb_boss_snort_01", "when": "stomp wind-up" },
+      "11210": { "name": "cb_boss_growl_01", "when": "charge wind-up" }
+    },
+    "music": { "859": "brutus_cow_boss" }
+  },
+  "items": {
+    "33115": "bull_bones",
+    "33106": "raw_tbone_steak"
+  },
+  "hitsplats": { "12": "block", "16": "damage", "43": "damage (max hit)" },
+  "headbars": { "17": "boss health bar", "0": "player health bar" },
+  "interfaces": { "303": "hpbar_hud" },
+  "varps": {
+    "1683": "hpbar_hud_npc (= 15626 during fight)",
+    "5407": "total_cowboss_kills"
+  },
+  "varbits": {
+    "6099": "hpbar_hud_hp",
+    "6100": "hpbar_hud_basehp (58)",
+    "12401": "hpbar_hud_boss",
+    "20160": "cowboss_regular_dontaskagain",
+    "20090": "cowboss_scoreboards",
+    "20083": "ca_total_tasks_completed_cowboss"
+  },
+  "overhead_text": {
+    "wake": "Moo",
+    "stomp": "*snorts*",
+    "charge": "*growls*",
+    "death": "m-moo..."
+  },
+  "arena": {
+    "instanced": true,
+    "template_regions": [12851],
+    "plane": 0,
+    "boss_spawn_sw": [3261, 3287, 0],
+    "player_entry_tile": [3262, 3294, 0],
+    "player_exit_tile_real_world": [3252, 3267, 0],
+    "observed_player_bounds": { "x": [3254, 3264], "y": [3268, 3294] },
+    "observed_boss_sw_bounds": { "x": [3257, 3263], "y": [3284, 3291] }
+  },
+  "timings_ticks": {
+    "spawn_to_active": 6,
+    "melee_attack_speed": 5,
+    "melee_hit_delay": 0,
+    "opening_melee_block": 2,
+    "melee_block": 4,
+    "last_melee_to_special": 5,
+    "stomp_impact_delay": 4,
+    "stomp_interval": 8,
+    "stomps_per_set": 3,
+    "charge_dash_delay": 4,
+    "charge_distance_tiles": 4,
+    "charge_exact_move_cycles": 60,
+    "special_to_free_move": 6,
+    "special_to_next_action": 8,
+    "death_anim_delay": 1,
+    "despawn_delay": 5,
+    "respawn_after_despawn": 35
+  },
+  "stomp_tiles_relative_to_sw": {
+    "N": [[0, 3], [1, 3], [2, 3]],
+    "S": [[0, -1], [1, -1], [2, -1]],
+    "W": [[-1, 0], [-1, 1], [-1, 2]],
+    "E_inferred": [[3, 0], [3, 1], [3, 2]],
+    "SW": [[-1, -1], [-1, 0], [-1, 1], [0, -1], [1, -1]],
+    "SE": [[3, -1], [3, 0], [3, 1], [1, -1], [2, -1]],
+    "NW": [[-1, 3], [-1, 2], [-1, 1], [0, 3], [1, 3]],
+    "NE_inferred": [[3, 3], [3, 2], [3, 1], [2, 3], [1, 3]]
+  },
+  "unverified": {
+    "fencegate_r_cowboss_start": "right half of the real-world pen gate at (3263,3294); ID not in packets (60766 is a guess by adjacency)",
+    "npc_idle_walk_sequences": "not sent in packets; read from NPC config 15626",
+    "arena_collision": "not in packets; dump region 12851 (check 12850 if the field extends south of y=3264)"
+  }
+}
