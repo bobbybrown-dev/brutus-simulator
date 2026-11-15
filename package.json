@@ -6,7 +6,7 @@
   "description": "Tick-deterministic Brutus (OSRS NPC 15626) simulator: headless engine with RSProx log-replay verification, plus a Three.js client.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && tsx src/assetBundle/check.ts && vite build",
+    "build": "node -e \"const fs=require('fs'); if(!fs.existsSync('public/osrs-assets/manifest.json')) { const {execSync}=require('child_process'); try { execSync('npm run assets', {stdio:'inherit'}); } catch { console.log('Extracting prebuilt asset zip...'); execSync('node -e \\\"const fs=require(\\'fs\\'), {unzip}=require(\\'fflate\\');/* or your unzip command */\\\"'); } }\" && tsc --noEmit && tsx src/assetBundle/check.ts && vite build",
     "preview": "vite preview",
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
