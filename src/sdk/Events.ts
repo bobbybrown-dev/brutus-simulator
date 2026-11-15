@@ -19,6 +19,8 @@ export type SimEventBody =
   | { type: 'sound'; id: number }
   | { type: 'hitsplat'; target: 'player' | 'npc'; damage: number; hitsplat: number; source: string }
   | { type: 'player_attack'; npcId: number; accurate: boolean; damage: number; landTick: number }
+  | { type: 'player_prayer'; prayer: string; on: boolean }
+  | { type: 'player_consume'; itemId: number; kind: 'food' | 'potion'; healed: number }
   | { type: 'player_death' };
 
 export type SimEvent = SimEventBody & { tick: number };

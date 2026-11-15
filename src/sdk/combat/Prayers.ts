@@ -36,6 +36,17 @@ export const Prayers = {
   PIETY: { meleeAccuracy: pct(120), meleeStrength: pct(123), defence: pct(125) },
   RIGOUR: { rangedAccuracy: pct(120), rangedStrength: pct(123), defence: pct(125) },
   AUGURY: { magicAccuracy: pct(125), defence: pct(125) },
+  MYSTIC_WILL: { magicAccuracy: pct(105) },
+  MYSTIC_LORE: { magicAccuracy: pct(110) },
+  MYSTIC_MIGHT: { magicAccuracy: pct(115) },
+  // No combat-roll effect; present so the whole standard book can be switched on and drained.
+  RAPID_RESTORE: {},
+  RAPID_HEAL: {},
+  PROTECT_ITEM: {},
+  RETRIBUTION: {},
+  REDEMPTION: {},
+  SMITE: {},
+  PRESERVE: {},
 } as const satisfies Record<string, PrayerEffect>;
 
 export type PrayerName = keyof typeof Prayers;

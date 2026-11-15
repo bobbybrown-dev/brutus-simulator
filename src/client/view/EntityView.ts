@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Tile } from '../../sdk/Location.ts';
 import { footprintCentre } from './coords.ts';
 import type { EntityModel } from './models.ts';
+import { FLAT_GROUND, type Ground } from './Ground.ts';
 import { CanvasSprite, drawHealthBar, drawHitsplat, drawProtectMelee, drawText } from './sprites.ts';
 
 interface Motion {
@@ -10,6 +11,8 @@ interface Motion {
   /** Tick (fractional) at which the move starts and how many ticks it takes. */
   start: number;
   ticks: number;
+  /** Tiles per tick of the current glide; 0 when standing. */
+  speed: number;
 }
 
 interface FloatingSplat {
@@ -41,9 +44,11 @@ export class EntityView {
     private readonly size: number,
     private readonly height: number,
     start: Tile,
+    private readonly ground: Ground = FLAT_GROUND,
+    prayerIcon: string | null = null,
   ) {
     const at = footprintCentre(start, size);
-    this.motion = { from: at.clone(), to: at.clone(), start: 0, ticks: 1 };
+    this.motion = { from: at.clone(), to: at.clone(), start: 0, ticks: 1, speed: 0 };
     this.group.position.copy(at);
     this.group.add(model.object);
 
@@ -55,7 +60,8 @@ export class EntityView {
     this.prayer = new CanvasSprite(96, 96, 0.45);
     this.prayer.sprite.position.y = height + 0.7;
     this.prayer.sprite.visible = false;
-    this.prayer.draw(drawProtectMelee);
+    if (prayerIcon) this.prayer.drawImage(prayerIcon);
+    else this.prayer.draw(drawProtectMelee);
     this.group.add(this.healthBar.sprite, this.text.sprite, this.prayer.sprite);
     this.setHealth(1);
   }
@@ -66,8 +72,10 @@ export class EntityView {
     footprintCentre(sw, this.size, this.motion.to);
     this.motion.start = atTick;
     this.motion.ticks = ticks;
+    this.motion.from.y = this.motion.to.y = 0;
     const dx = this.motion.to.x - this.motion.from.x;
     const dz = this.motion.to.z - this.motion.from.z;
+    this.motion.speed = Math.max(Math.abs(dx), Math.abs(dz)) / ticks;
     if (Math.abs(dx) + Math.abs(dz) > 1e-6) this.targetYaw = Math.atan2(dx, dz);
   }
 
@@ -75,6 +83,7 @@ export class EntityView {
   snapTo(sw: Tile): void {
     footprintCentre(sw, this.size, this.motion.to);
     this.motion.from.copy(this.motion.to);
+    this.motion.speed = 0;
     this.group.position.copy(this.motion.to);
   }
 
@@ -125,6 +134,8 @@ export class EntityView {
   update(tickTime: number, dt: number): void {
     const t = Math.min(1, Math.max(0, (tickTime - this.motion.start) / this.motion.ticks));
     this.group.position.lerpVectors(this.motion.from, this.motion.to, t);
+    this.group.position.y = this.ground.heightAt(this.group.position.x, this.group.position.z);
+    this.model.setLocomotion?.(t < 1 && this.motion.speed > 0 ? (this.motion.speed > 1.5 ? 'run' : 'walk') : 'idle');
 
     let delta = this.targetYaw - this.model.object.rotation.y;
     delta = Math.atan2(Math.sin(delta), Math.cos(delta));

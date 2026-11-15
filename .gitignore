@@ -1,0 +1,7 @@
+node_modules/
+dist/
+# Generated from the OSRS cache by `npm run assets`; Jagex assets are never committed.
+public/osrs-assets/
+osrs-assets-prebuilt.zip
+.cache-render/
+scratch/

@@ -73,3 +73,7 @@ export function playerMaxHitOf(l: PlayerLoadout, prayers: ReadonlySet<PrayerName
   const effective = playerEffectiveLevel(level(l, 'strength'), prayerFactors(prayers, 'meleeStrength'), stanceBonus);
   return playerMaxHit(effective, l.bonuses.other.meleeStrength);
 }
+
+/** Stances the equipped weapon offers. Bows: Accurate, Rapid, Longrange; melee: the four melee stances. */
+export const availableStances = (l: PlayerLoadout): readonly Stance[] =>
+  l.attackStyle === 'range' ? ['accurate', 'rapid', 'longrange'] : l.attackStyle === 'magic' ? ['accurate', 'longrange'] : ['accurate', 'aggressive', 'controlled', 'defensive'];

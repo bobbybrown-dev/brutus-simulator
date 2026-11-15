@@ -2,21 +2,26 @@
 
 Tick-deterministic simulation of Brutus (OSRS NPC 15626): a headless engine with a log-replay test
 against the ten captured kills (875 ticks) in `data/` (Phase 4), and a Three.js browser client on
-top of it (Phase 5 scaffold, placeholder models).
+top of it (Phase 5) that uses models, animations, terrain, icons and interface sprites extracted
+from your own OSRS cache.
 
 Everything for this project lives in this folder (`brutus simulator/`): code, tests, data, docs.
 
 ```
 npm install
-npm test                  # 61 tests: 10 kill replays + combat, arena, engine, pathing, collision, geometry, client
+npm test                  # 79 tests: 10 kill replays, combat, arena, engine, geometry, client, assets, interface
 npm run typecheck
 npm run check-collision   # validate the collision dumps against the capture (CLEAN / DIVERGES)
+npm run assets            # extract cache assets into public/osrs-assets/ (see "Cache assets")
+npm run assets:check      # verify the bundle against src/assets.ts
 npm run dev               # browser client with hot reload (Vite prints the local URL)
-npm run build             # type-check, then bundle the client into dist/
+npm run build             # type-check, check the asset bundle, then bundle the client into dist/
+npm run build:placeholders  # build without cache assets (boxes and a flat field)
 ```
 
 Requires Node 22+. The engine has no runtime dependencies; the client's only one is `three`.
-`vite`, `tsx` and `typescript` are dev-only.
+`vite`, `tsx`, `typescript` and `fflate` are dev-only. `npm run assets` also needs `git` (or access
+to codeload.github.com) the first time, to fetch the cache reader.
 
 ## Layout
 
@@ -39,12 +44,19 @@ src/content/brutus/      Boss content.
   BrutusConstants.ts     IDs, tick timings, config.
   BrutusEncounter.ts     Spawn, kill records, 40-tick respawn.
   BrutusArena.ts         Builds the CollisionMap from the four region dumps; closes the instance gates.
+src/assets.ts            Every cache ID the simulator uses (NPC, sequences, items, sprites, sounds, terrain box).
+src/assetBundle/         manifest.ts (manifest types + pure checker), check.ts (build gate), requirementsHash.ts.
+scripts/assets/          The extraction pipeline (Node-only): reader setup, models, terrain, item icons, sprites, sounds.
+osrs-assets.config.ts    Cache source and output folder for `npm run assets`.
+public/osrs-assets/      Generated bundle. Git-ignored; Jagex assets are never committed.
 src/client/              Browser client (Phase 5). The only place that imports three or touches the DOM.
   GameSession.ts         Free-play fight: seeded world + player intents + stats. No DOM, runs in Node.
   arenaLayout.ts         Floor tiles, fences, gates, scenery and the region seam, derived from the CollisionMap.
   telegraphTiles.ts      Stomp danger tiles / charge lane for a pending special.
   view/                  Three.js: ArenaView, EntityView, TelegraphView, BrutusView, sprites, models.
-  hud/Hud.ts             DOM side panel: start/reset, toggles, tick counter, damage and DPS.
+  assets/AssetBundle.ts  Loads osrs-assets/manifest.json at runtime; null when no bundle is deployed.
+  hud/GameFrame.ts       The fixed-mode game frame: viewport, minimap, chatbox, side panel and tabs. Intents only.
+  hud/Hud.ts             Simulator controls and fight statistics, shown in the chatbox.
   main.ts, style.css     Entry point: wires TickClock → session.tick() → view + HUD.
 index.html, vite.config.ts   Client entry and bundler config (workspace root).
 src/replay/              Log-replay harness (Timeline CSV parser, ReplayOracle, replayKill).
@@ -55,43 +67,75 @@ scripts/                 check-collision.ts, convert_collision_map.py (rebuilds 
 data/                    brutus_tick_timeline.csv (K1–K5), brutus_tick_timeline_capture2.csv (K6–K10),
                          brutus_ids.json.
 logs/                    RSProx transcripts (capture 2; capture 1 is in the claude.ai project).
-docs/                    BOSS_SPEC.md (revision 4), COMBAT_PLAN.md.
+docs/                    BOSS_SPEC.md (revision 4), COMBAT_PLAN.md, PHASE4_NOTES.md, ASSETS.md.
 region_12851 / 13107 / 12850 / 13106 _collision.json     Arena collision (workspace root).
 ```
 
-## Browser client (Phase 5 scaffold)
+## Browser client (Phase 5)
 
-`npm run dev` opens the fight in a browser; `npm run build` writes a static site to `dist/`
-(`index.html` plus one JS and one CSS file, relative paths, so the folder can be dropped into any
-directory of a website).
+`npm run dev` opens the fight in a browser, inside the classic fixed-mode game frame: a 765×503
+layout with the 512×334 game viewport, the minimap surround and orbs, the chatbox and the side
+panel, scaled as one block to fit the window. With a bundle in `public/osrs-assets/` it shows the
+real Brutus and player models with their animations, the cow field's terrain and the game's own
+frame art. Without one the same layout is drawn in flat colours with boxes on a flat field.
+
+- **Frame.** `hud/GameFrame.ts` lays everything out in native pixels and scales the block
+  (`fit()`); the 3D view renders at the scaled resolution, so it stays sharp. The simulator's own
+  controls and statistics sit in the chatbox. "Pixel-perfect scaling" snaps to whole multiples of
+  765×503: cache sprites are pixel art and are only exact at whole multiples, so in between they
+  are smoothed. Item icons do not have that limit: each is also rendered at 4× from its 3D model
+  and the frame uses that version whenever it is not at native size.
 
 - **Decoupling.** `src/sdk`, `src/content` and `src/replay` never import `three`, the DOM or
-  `src/client`; `test/client.test.ts` fails if they do. The client drives the engine through
-  `GameSession.tick()` once per 600 ms (`TickClock`) and only reads state and the `SimEvent`
-  stream. Rendering runs on `requestAnimationFrame` and interpolates between the last two ticks
-  with `clock.alpha`; nothing in the simulation depends on frame rate.
-- **Arena.** Floor, fences, the two closed gates and the solid scenery are drawn from the loaded
-  `CollisionMap` (`arenaLayout.ts`), not from a hand-made map. "Debug overlay" shows the tile grid
-  and the x = 3264 region seam.
-- **Entities.** Player (1×1) and Brutus (3×3, SW-anchored) are placeholder primitives with a
-  facing marker, HP bar, overhead text, a Protect from Melee icon and hitsplats (red = damage,
-  blue = 0).
-- **Telegraphs.** Stomp danger tiles in red and the charge lane in orange from the tick the
-  special starts until it lands (T → T+4); the charge dash follows the `exact_move` event.
+  `src/client`. The side panel (`hud/GameFrame.ts`) renders a snapshot and emits intents
+  (`togglePrayer`, `useItem`, `setStance`, …); prayer drain, eating, potions and stances are all
+  engine code (`src/sdk/Player.ts`, `combat/PrayerBook.ts`, `Inventory.ts`) covered by Node tests.
+  Tests fail if either boundary is crossed.
 - **Controls.** Click the ground to walk, click Brutus to attack; drag to orbit, wheel to zoom.
-  The HUD has start / reset, Protect from Melee, auto-retaliate, click-to-move, run and the debug
-  overlay, plus tick, HP, damage dealt/taken, DPS and kills. `window.brutus` exposes
-  `{ session, clock, view }` in the console.
-- **Swapping in real models.** `view/models.ts` defines `ModelProvider`
-  (`createPlayer()`, `createNpc(npcId, size)`) returning an `EntityModel` with
-  `playSequence(seqId)`. `PlaceholderModelProvider` is the default. `GltfModelProvider` takes a
-  manifest `{ npcs: { 15626: { url, scale, yaw, clips: { 13790: 'spawn', 13783: 'attack',
-  13785: 'stomp', 13778: 'charge', 13784: 'death' } } } }` and maps engine sequence IDs to glTF
-  clip names. It type-checks but has **not been run against a real RuneLite export yet** — expect
-  to adjust scale, yaw and clip names with the first model.
+  F1–F7 switch tabs (`DEFAULT_TAB_KEYS`), Esc opens the inventory, the prayer orb toggles Protect
+  from Melee. Click food or a potion to use it.
+- **Interface.** Prayer book (29 prayers, level and unlock checks, conflicts, live drain),
+  inventory (food and potion doses), worn equipment with bonuses, combat styles and auto-retaliate.
+  Skills shows live levels; the quest, magic and bottom-row tabs are placeholders.
+- **Telegraphs and debug overlay** as before: red stomp tiles, orange charge lane, optional tile
+  grid and x = 3264 region seam.
 
-Not in the scaffold: real models/animations/terrain (Phase 3 assets), sound, eating, the other
-cows, and an inventory or prayer-point model (the prayer toggle never drains).
+## Cache assets
+
+```
+npm run assets                                  # RuneLite's live cache (default)
+npm run assets -- --cache-dir "D:\some\cache"   # any folder with main_file_cache.dat2 + .idx files
+npm run assets -- --openrs2 <id>                # a pinned archive from archive.openrs2.org
+```
+
+The layout follows osrs-sdk's asset tooling (`osrs-sdk-assets`): a browser-safe requirements
+module (`src/assets.ts`), a Node-only build configured by `osrs-assets.config.ts`, a generated and
+git-ignored `public/osrs-assets/` with a `manifest.json`, and a check that fails the build.
+Details, limits and the cache-format notes are in `docs/ASSETS.md`.
+
+What it writes (about 4 MB, 150 files):
+
+| Folder | Contents |
+|---|---|
+| `models/` | `npc-15626.gltf` (Brutus) and `player.gltf` (base body + the captured gear). One animation clip per sequence ID, baked as morph targets. |
+| `terrain/` | `arena.json`: heights, blended underlay colours and overlays for the field and its surroundings. |
+| `textures/` | Ground textures the terrain uses (water, in this area). |
+| `item-icons/` | Inventory icons rendered from the item models: the game's 36×32 sprite (`<id>.png`) and a 144×128 render (`<id>@4x.png`). |
+| `sprites/` | Prayer icons, overhead icons, the fixed-mode frame (chatbox, minimap surround, side panel), tab and equipment-slot icons. |
+| `sounds/` | Brutus's three sound effects as WAV. |
+
+`osrs-assets-prebuilt.zip` (git-ignored) is the bundle built from your RuneLite cache on 2026-11-15.
+If `npm run assets` cannot run on your machine, unzip it into `public/` so that
+`public/osrs-assets/manifest.json` exists.
+
+**Build errors.** `npm run assets` fails, listing every ID it could not extract, and leaves the
+previous bundle untouched. `npm run build` runs `assets:check` first and stops if the bundle is
+missing, stale (requirements changed since it was built), incomplete, or a file was altered.
+
+**Publishing.** `npm run build` copies the bundle into `dist/osrs-assets/`. Those files are Jagex's
+property; whether to host them on a public site is your decision. `npm run build:placeholders`
+gives a build with none of them. A CI build (GitHub Pages, Vercel) has no cache, so either run
+`npm run assets -- --openrs2 <id>` in CI or build locally and deploy `dist/`.
 
 ## What the replay test does
 
@@ -185,6 +229,8 @@ override (K5 tick 1465) is now refused by a real solid at 3260,3294.
    collision rules of the charge (one sample each); a special falling due while the player is
    under the boss.
 3. **Player combat is minimal.** Melee and ranged with the standard formulas; no magic, special
-   attacks, gear set effects, prayer drain, line of sight, or walking toward the target.
+   attacks, gear set effects, line of sight, or walking toward the target. Prayer drain, eating,
+   potions and stance switching exist for free play and use standard OSRS values, not captured
+   ones; the log replay does not use them.
 4. **Other NPCs are not simulated.** Cows share the instance and would block the boss's path;
    none came near it in the capture.

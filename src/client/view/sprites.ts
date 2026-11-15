@@ -20,6 +20,18 @@ export class CanvasSprite {
     this.sprite.renderOrder = 10;
   }
 
+  /** Fill the sprite with an image (pixel-art sprites stay crisp), keeping its aspect ratio. */
+  drawImage(url: string): void {
+    const image = new Image();
+    image.onload = () =>
+      this.draw((ctx, w, h) => {
+        ctx.imageSmoothingEnabled = false;
+        const scale = Math.min(w / image.width, h / image.height);
+        ctx.drawImage(image, (w - image.width * scale) / 2, (h - image.height * scale) / 2, image.width * scale, image.height * scale);
+      });
+    image.src = url;
+  }
+
   draw(paint: (ctx: CanvasRenderingContext2D, w: number, h: number) => void): void {
     const ctx = this.canvas.getContext('2d')!;
     ctx.clearRect(0, 0, this.width, this.height);

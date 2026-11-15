@@ -6,15 +6,19 @@
   "description": "Tick-deterministic Brutus (OSRS NPC 15626) simulator: headless engine with RSProx log-replay verification, plus a Three.js client.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && tsx src/assetBundle/check.ts && vite build",
     "preview": "vite preview",
     "test": "node --import tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "check-collision": "tsx scripts/check-collision.ts"
+    "check-collision": "tsx scripts/check-collision.ts",
+    "build:placeholders": "tsc --noEmit && vite build",
+    "assets": "tsx scripts/assets/build.ts",
+    "assets:check": "tsx src/assetBundle/check.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/three": "^0.187.0",
+    "fflate": "0.8.2",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vite": "^8.3.8"

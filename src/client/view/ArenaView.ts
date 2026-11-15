@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { ArenaLayout, FenceSegment } from '../arenaLayout.ts';
 import { footprintCentre, SCENE_ORIGIN } from './coords.ts';
+import { FLAT_GROUND, type Ground } from './Ground.ts';
 
 const FENCE_HEIGHT = 0.7;
 
@@ -10,8 +11,17 @@ export class ArenaView {
   /** Grid lines and the region seam; toggled from the HUD. */
   readonly debug = new THREE.Group();
 
-  constructor(layout: ArenaLayout) {
-    this.group.add(this.buildSurround(layout), this.buildFloor(layout), this.buildFences(layout), this.buildSolids(layout), this.debug);
+  /**
+   * `ground` lifts everything onto the terrain. With `realTerrain` the collision-derived floor and
+   * surround are left out (a TerrainView draws the ground) and the solid boxes become outlines.
+   */
+  constructor(
+    layout: ArenaLayout,
+    private readonly ground: Ground = FLAT_GROUND,
+    realTerrain = false,
+  ) {
+    if (!realTerrain) this.group.add(this.buildSurround(layout), this.buildFloor(layout));
+    this.group.add(this.buildFences(layout), this.buildSolids(layout), this.debug);
     this.debug.add(this.buildGrid(layout));
     if (layout.seamX !== null) this.debug.add(this.buildSeam(layout, layout.seamX));
   }
@@ -58,12 +68,14 @@ export class ArenaView {
       segments.forEach((s, i) => {
         footprintCentre(s.tile, 1, dummy.position);
         dummy.position.y = height / 2;
+        const lift = (): number => this.ground.heightAt(dummy.position.x, dummy.position.z);
         const northSouth = s.side === 'north' || s.side === 'south';
         dummy.rotation.y = northSouth ? 0 : Math.PI / 2;
         if (s.side === 'north') dummy.position.z -= 0.5;
         if (s.side === 'south') dummy.position.z += 0.5;
         if (s.side === 'east') dummy.position.x += 0.5;
         if (s.side === 'west') dummy.position.x -= 0.5;
+        dummy.position.y += lift();
         dummy.updateMatrix();
         mesh.setMatrixAt(i, dummy.matrix);
       });
@@ -84,7 +96,7 @@ export class ArenaView {
     const matrix = new THREE.Matrix4();
     layout.solids.forEach((t, i) => {
       const p = footprintCentre(t);
-      p.y = 0.45;
+      p.y = 0.45 + this.ground.heightAt(p.x, p.z);
       matrix.setPosition(p);
       mesh.setMatrixAt(i, matrix);
     });
@@ -97,7 +109,8 @@ export class ArenaView {
     for (const t of layout.floor) {
       const x = t.x - SCENE_ORIGIN.x;
       const z = -(t.y - SCENE_ORIGIN.y);
-      points.push(x, 0.01, z, x + 1, 0.01, z, x, 0.01, z, x, 0.01, z - 1);
+      const y = (px: number, pz: number): number => this.ground.heightAt(px, pz) + 0.02;
+      points.push(x, y(x, z), z, x + 1, y(x + 1, z), z, x, y(x, z), z, x, y(x, z - 1), z - 1);
     }
     const geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
     return new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: 0x1f3a16, transparent: true, opacity: 0.45 }));
@@ -105,12 +118,13 @@ export class ArenaView {
 
   /** The line where region 12851 meets 13107. Nothing in the engine treats it specially. */
   private buildSeam(layout: ArenaLayout, seamX: number): THREE.Object3D {
-    const length = layout.bounds.maxY - layout.bounds.minY + 1;
-    const strip = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.1, length).rotateX(-Math.PI / 2),
-      new THREE.MeshBasicMaterial({ color: 0xffe14d, transparent: true, opacity: 0.8 }),
-    );
-    strip.position.set(seamX - SCENE_ORIGIN.x, 0.02, -(layout.bounds.minY - SCENE_ORIGIN.y) - length / 2);
-    return strip;
+    const points: number[] = [];
+    const x = seamX - SCENE_ORIGIN.x;
+    for (let wy = layout.bounds.minY; wy <= layout.bounds.maxY; wy++) {
+      const z = -(wy - SCENE_ORIGIN.y);
+      points.push(x, this.ground.heightAt(x, z) + 0.04, z, x, this.ground.heightAt(x, z - 1) + 0.04, z - 1);
+    }
+    const geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+    return new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: 0xffe14d }));
   }
 }

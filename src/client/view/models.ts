@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { PLAYER_SEQUENCES } from '../../assets.ts';
+import type { AssetBundle } from '../assets/AssetBundle.ts';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { BrutusIds } from '../../content/brutus/BrutusConstants.ts';
 
@@ -6,10 +8,14 @@ import { BrutusIds } from '../../content/brutus/BrutusConstants.ts';
  * What the renderer needs from an entity's visual, whatever it is made of. Models are built
  * facing +z, standing on y = 0, centred on their footprint.
  */
+export type Locomotion = 'idle' | 'walk' | 'run';
+
 export interface EntityModel {
   readonly object: THREE.Object3D;
   /** Start an animation by OSRS sequence id (13783 attack, 13785 stomp, …). Unknown ids are ignored. */
   playSequence(sequenceId: number): void;
+  /** Tell the model whether the entity is standing, walking or running, for its looping animation. */
+  setLocomotion?(state: Locomotion): void;
   /** Advance animations by `dt` seconds of real time. */
   update(dt: number): void;
   dispose(): void;
@@ -119,12 +125,17 @@ export class PlaceholderModelProvider implements ModelProvider {
 export interface GltfAsset {
   /** URL of a .glb / .gltf exported from the cache (e.g. with RuneLite's model exporter). */
   url: string;
-  /** Uniform scale that makes one tile one unit. OSRS model units are 128 per tile. */
-  scale?: number;
+  /** Scale that makes one tile one unit (OSRS model units are 128 per tile); [x, y, z] for NPCs with separate width and height scales. */
+  scale?: number | readonly [number, number, number];
   /** Extra yaw in radians if the export does not face +z. */
   yaw?: number;
-  /** OSRS sequence id → name of the animation clip inside the file. */
+  /** OSRS sequence id → name of the animation clip inside the file. A sequence not listed here is looked up by its ID as the clip name. */
   clips: Record<number, string>;
+  /** Clips to loop while walking / running. */
+  walkClip?: string;
+  runClip?: string;
+  /** Sequences that hold their last frame instead of returning to idle (death). */
+  hold?: readonly number[];
   /** Clip to loop when nothing else is playing. */
   idleClip?: string;
 }
@@ -137,7 +148,7 @@ export interface GltfManifest {
 /**
  * Real models. Each entity starts as its placeholder and swaps to the glTF scene when the file
  * arrives, so a missing or broken asset degrades to boxes instead of an empty scene.
- * UNTESTED against real exports: no cache models exist in the workspace yet.
+ * Tested with the glTF files `npm run assets` writes (morph-target animation, one clip per sequence ID).
  */
 export class GltfModelProvider implements ModelProvider {
   private readonly loader = new GLTFLoader();
@@ -164,13 +175,36 @@ class GltfModel implements EntityModel {
   private mixer: THREE.AnimationMixer | null = null;
   private clips = new Map<string, THREE.AnimationClip>();
   private current: THREE.AnimationAction | null = null;
+  private locomotion: Locomotion = 'idle';
+  private oneShot = false;
+  private holding = false;
 
   constructor(loader: GLTFLoader, private readonly asset: GltfAsset, private placeholder: EntityModel | null) {
     this.object.add(placeholder!.object);
     loader.load(
       asset.url,
       (gltf) => {
-        gltf.scene.scale.setScalar(asset.scale ?? 1 / 128);
+        const scale = asset.scale ?? 1 / 128;
+        if (typeof scale === 'number') gltf.scene.scale.setScalar(scale);
+        else gltf.scene.scale.set(scale[0], scale[1], scale[2]);
+        gltf.scene.traverse((node) => {
+          const mesh = node as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          mesh.castShadow = true;
+          mesh.frustumCulled = false; // morph targets move vertices outside the rest-pose bounds
+          const material = mesh.material as THREE.MeshStandardMaterial;
+          // The export has no normals, which three renders faceted. The game shades smoothly, so
+          // compute rest-pose normals; they are not re-derived per animation frame.
+          if (!mesh.geometry.getAttribute('normal')) {
+            mesh.geometry.computeVertexNormals();
+            material.flatShading = false;
+            material.needsUpdate = true;
+          }
+          material.roughness = 1;
+          material.metalness = 0;
+          const map = material.map;
+          if (map) map.magFilter = map.minFilter = THREE.NearestFilter; // the texture is a colour palette
+        });
         gltf.scene.rotation.y = asset.yaw ?? 0;
         this.object.remove(this.placeholder!.object);
         this.placeholder!.dispose();
@@ -178,7 +212,12 @@ class GltfModel implements EntityModel {
         this.object.add(gltf.scene);
         this.mixer = new THREE.AnimationMixer(gltf.scene);
         for (const clip of gltf.animations) this.clips.set(clip.name, clip);
-        if (asset.idleClip) this.play(asset.idleClip, true);
+        this.mixer.addEventListener('finished', () => {
+          if (this.holding) return;
+          this.oneShot = false;
+          this.playLoop();
+        });
+        this.playLoop();
       },
       undefined,
       (error) => console.warn(`model ${asset.url} failed to load; keeping the placeholder`, error),
@@ -187,8 +226,23 @@ class GltfModel implements EntityModel {
 
   playSequence(sequenceId: number): void {
     if (this.placeholder) return this.placeholder.playSequence(sequenceId);
-    const name = this.asset.clips[sequenceId];
-    if (name) this.play(name, false);
+    const name = this.asset.clips[sequenceId] ?? String(sequenceId);
+    if (!this.clips.has(name)) return;
+    this.oneShot = true;
+    this.holding = this.asset.hold?.includes(sequenceId) ?? false;
+    this.play(name, false);
+  }
+
+  setLocomotion(state: Locomotion): void {
+    if (this.placeholder) return this.placeholder.setLocomotion?.(state);
+    if (state === this.locomotion) return;
+    this.locomotion = state;
+    if (!this.oneShot) this.playLoop();
+  }
+
+  private playLoop(): void {
+    const name = (this.locomotion === 'run' ? (this.asset.runClip ?? this.asset.walkClip) : this.locomotion === 'walk' ? this.asset.walkClip : undefined) ?? this.asset.idleClip;
+    if (name) this.play(name, true);
   }
 
   private play(name: string, loop: boolean): void {
@@ -198,7 +252,8 @@ class GltfModel implements EntityModel {
     action.reset();
     action.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce, loop ? Infinity : 1);
     action.clampWhenFinished = true;
-    if (this.current && this.current !== action) action.crossFadeFrom(this.current, 0.1, false);
+    // Frames are baked morph targets: cut between clips instead of blending two poses.
+    if (this.current && this.current !== action) this.current.stop();
     action.play();
     this.current = action;
   }
@@ -212,4 +267,31 @@ class GltfModel implements EntityModel {
     this.placeholder?.dispose();
     this.mixer?.stopAllAction();
   }
+}
+
+/** Model manifest for the bundle `npm run assets` writes: clips are named by sequence ID. */
+export function cacheModelManifest(bundle: AssetBundle, holdSequences: readonly number[] = []): GltfManifest {
+  const manifest: GltfManifest = { npcs: {} };
+  for (const [id, npc] of Object.entries(bundle.manifest.npcs)) {
+    const width = npc.widthScale / 128 / 128;
+    manifest.npcs[Number(id)] = {
+      url: bundle.url(npc),
+      scale: [width, npc.heightScale / 128 / 128, width],
+      clips: {},
+      idleClip: String(npc.idleSequence),
+      walkClip: String(npc.walkSequence),
+      hold: holdSequences,
+    };
+  }
+  const player = bundle.manifest.player;
+  if (player)
+    manifest.player = {
+      url: bundle.url(player),
+      clips: {},
+      idleClip: String(PLAYER_SEQUENCES.idle),
+      walkClip: String(PLAYER_SEQUENCES.walk),
+      runClip: String(PLAYER_SEQUENCES.run),
+      hold: [PLAYER_SEQUENCES.death, ...holdSequences],
+    };
+  return manifest;
 }

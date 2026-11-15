@@ -10,6 +10,18 @@ import { ArenaView } from './ArenaView.ts';
 import { footprintCentre, tileAt } from './coords.ts';
 import { EntityView } from './EntityView.ts';
 import type { ModelProvider } from './models.ts';
+import { FLAT_GROUND, type Ground } from './Ground.ts';
+import { TerrainView } from './TerrainView.ts';
+import { PLAYER_SEQUENCES } from '../../assets.ts';
+import type { TerrainData } from '../../assetBundle/manifest.ts';
+
+/** Optional cache assets; anything left out falls back to the placeholder look. */
+export interface ViewAssets {
+  terrain?: TerrainData | null;
+  textureUrl?: (textureId: number) => string | null;
+  protectMeleeIcon?: string | null;
+  playSound?: (soundId: number) => void;
+}
 import { TelegraphView } from './TelegraphView.ts';
 
 interface Projectile {
@@ -31,9 +43,12 @@ export class BrutusView {
   private readonly scene = new THREE.Scene();
   private readonly camera: THREE.PerspectiveCamera;
   private readonly controls: OrbitControls;
+  private pixelScale = 1;
   private readonly layout: ArenaLayout;
   private readonly floorKeys: Set<string>;
   private readonly arena: ArenaView;
+  private terrain: TerrainView | null = null;
+  private groundHeights: Ground = FLAT_GROUND;
   private readonly telegraphs: TelegraphView;
   private readonly entities = new THREE.Group();
   private player!: EntityView;
@@ -50,6 +65,7 @@ export class BrutusView {
     private readonly session: GameSession,
     private readonly clock: TickClock,
     private readonly models: ModelProvider,
+    private readonly assets: ViewAssets = {},
   ) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
@@ -67,13 +83,18 @@ export class BrutusView {
 
     this.layout = computeArenaLayout(session.collision, BRUTUS_SPAWN_TILE);
     this.floorKeys = new Set(this.layout.floor.map((t) => `${t.x},${t.y}`));
-    this.arena = new ArenaView(this.layout);
-    this.telegraphs = new TelegraphView((t) => this.floorKeys.has(`${t.x},${t.y}`));
+    if (assets.terrain) {
+      this.terrain = new TerrainView(assets.terrain, BRUTUS_SPAWN_TILE, assets.textureUrl ?? (() => null));
+      this.scene.add(this.terrain.group);
+    }
+    this.groundHeights = this.terrain ?? FLAT_GROUND;
+    this.arena = new ArenaView(this.layout, this.groundHeights, this.terrain !== null);
+    this.telegraphs = new TelegraphView((t) => this.floorKeys.has(`${t.x},${t.y}`), this.groundHeights);
     this.scene.add(this.arena.group, this.telegraphs.group, this.entities);
 
-    const focus = footprintCentre({ x: 3260, y: 3287 }, 3);
+    const focus = footprintCentre({ x: 3260, y: 3289 }, 3);
     this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 400);
-    this.camera.position.set(focus.x, 15, focus.z + 13);
+    this.camera.position.set(focus.x, 9.5, focus.z + 9);
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.target.copy(focus);
     this.controls.maxPolarAngle = Math.PI / 2.15;
@@ -102,7 +123,7 @@ export class BrutusView {
     for (const p of this.projectiles) this.scene.remove(p.mesh);
     this.projectiles = [];
     this.boss = null;
-    this.player = new EntityView(this.models.createPlayer(), 1, 1.8, this.session.player.location);
+    this.player = new EntityView(this.models.createPlayer(), 1, 1.8, this.session.player.location, this.groundHeights, this.assets.protectMeleeIcon ?? null);
     this.entities.add(this.player.group);
   }
 
@@ -115,7 +136,7 @@ export class BrutusView {
         case 'npc_spawn':
           this.boss?.dispose();
           if (this.boss) this.entities.remove(this.boss.group);
-          this.boss = new EntityView(this.models.createNpc(e.npcId, BRUTUS_SIZE), BRUTUS_SIZE, 2.2, e.at);
+          this.boss = new EntityView(this.models.createNpc(e.npcId, BRUTUS_SIZE), BRUTUS_SIZE, 2.2, e.at, this.groundHeights);
           this.entities.add(this.boss.group);
           break;
         case 'npc_despawn':
@@ -141,7 +162,14 @@ export class BrutusView {
           (e.target === 'player' ? this.player : this.boss)?.hitsplat(e.damage, tick);
           break;
         case 'player_attack':
+          this.player.playSequence(PLAYER_SEQUENCES.fireBow);
           this.fireProjectile(tick, e.landTick);
+          break;
+        case 'player_death':
+          this.player.playSequence(PLAYER_SEQUENCES.death);
+          break;
+        case 'sound':
+          this.assets.playSound?.(e.id);
           break;
         default:
           break;
@@ -216,15 +244,32 @@ export class BrutusView {
     }
     if (!this.clickToMove) return;
     const point = new THREE.Vector3();
-    if (!this.raycaster.ray.intersectPlane(this.ground, point)) return;
+    const hit = this.terrain ? this.raycaster.intersectObject(this.terrain.group, true)[0] : undefined;
+    if (hit) point.copy(hit.point);
+    else if (!this.raycaster.ray.intersectPlane(this.ground, point)) return;
     const tile = tileAt(point);
     if (!this.floorKeys.has(`${tile.x},${tile.y}`)) return;
     this.session.moveTo(tile);
     this.telegraphs.markClick(tile, this.session.world.tick + this.clock.alpha);
   };
 
+  /**
+   * The container may be drawn larger than its CSS size (the game frame is scaled as a block);
+   * render that many more pixels so the 3D view stays sharp.
+   */
+  setPixelScale(scale: number): void {
+    this.pixelScale = Math.max(0.25, scale);
+    this.resize();
+  }
+
+  /** Whether a tile is part of the fenced field (for the minimap). */
+  isFloor(x: number, y: number): boolean {
+    return this.floorKeys.has(`${x},${y}`);
+  }
+
   private readonly resize = (): void => {
     const { clientWidth: w, clientHeight: h } = this.container;
+    this.renderer.setPixelRatio(Math.min(4, window.devicePixelRatio * this.pixelScale));
     this.renderer.setSize(w, h);
     this.camera.aspect = w / Math.max(1, h);
     this.camera.updateProjectionMatrix();

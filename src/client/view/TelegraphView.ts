@@ -3,6 +3,7 @@ import type { BrutusTelegraph } from '../../content/brutus/Brutus.ts';
 import type { Tile } from '../../sdk/Location.ts';
 import { telegraphTiles } from '../telegraphTiles.ts';
 import { footprintCentre } from './coords.ts';
+import { FLAT_GROUND, type Ground } from './Ground.ts';
 
 const STOMP_COLOUR = 0xff3b30;
 const CHARGE_COLOUR = 0xff9f0a;
@@ -20,7 +21,10 @@ export class TelegraphView {
   private marker: { tile: Tile; until: number } | null = null;
 
   /** `isFloor` keeps highlights inside the arena (a charge can be aimed past a fence). */
-  constructor(private readonly isFloor: (t: Tile) => boolean) {}
+  constructor(
+    private readonly isFloor: (t: Tile) => boolean,
+    private readonly ground: Ground = FLAT_GROUND,
+  ) {}
 
   private tile(t: Tile, colour: number, opacity: number): void {
     let mesh = this.pool[this.used];
@@ -35,7 +39,7 @@ export class TelegraphView {
     }
     this.used++;
     footprintCentre(t, 1, mesh.position);
-    mesh.position.y = 0.03;
+    mesh.position.y = this.ground.heightAt(mesh.position.x, mesh.position.z) + 0.06;
     const material = mesh.material as THREE.MeshBasicMaterial;
     material.color.set(colour);
     material.opacity = opacity;

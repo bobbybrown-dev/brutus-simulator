@@ -38,3 +38,17 @@ export const CAPTURE_LOADOUT: PlayerLoadout = {
   weaponSpeed: 4,
   attackRange: 7,
 };
+
+export type EquipmentSlot = 'head' | 'cape' | 'neck' | 'ammo' | 'weapon' | 'body' | 'shield' | 'legs' | 'hands' | 'feet' | 'ring';
+
+/** The captured gear by equipment slot, for the equipment tab and the player model. */
+export const CAPTURE_WORN: Readonly<Partial<Record<EquipmentSlot, { itemId: number; name: string }>>> = {
+  head: { itemId: 6326, name: 'Snakeskin bandana' },
+  neck: { itemId: 1704, name: 'Amulet of glory' },
+  ammo: { itemId: 892, name: 'Rune arrow' },
+  weapon: { itemId: 861, name: 'Magic shortbow' },
+  body: { itemId: 2503, name: "Black d'hide body" },
+  legs: { itemId: 2497, name: "Black d'hide chaps" },
+  hands: { itemId: 2491, name: "Black d'hide vambraces" },
+  feet: { itemId: 6328, name: 'Snakeskin boots' },
+};
